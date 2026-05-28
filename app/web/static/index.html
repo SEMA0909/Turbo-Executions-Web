@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TURBO EXECUTIONS - Trading Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #071226;
+    --muted: #9aa9bf;
+    --text: #e6eef8;
+    --card: rgba(8,18,34,0.65);
+    --card-border: rgba(255,255,255,0.04);
+    --accent: #00c2ff; /* fintech cyan */
+    --accent-dark: #0066cc;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --glass: rgba(255,255,255,0.03);
+  }
+  html { scroll-behavior: smooth; }
+  body { 
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', 'Segoe UI', 'Roboto', system-ui, -apple-system;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  }
+  .gradient-accent { background: linear-gradient(90deg, var(--accent) 0%, var(--accent-dark) 100%); color: #071226; }
+  .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(6px); border: 1px solid var(--card-border); box-shadow: 0 4px 24px rgba(16,24,40,0.04); }
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; box-shadow: 0 6px 18px rgba(2,6,23,0.6); }
+  .pill { padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .pill-live    { background: rgba(6,182,212,0.12); color: var(--accent); }
+  .pill-mock    { background: rgba(245,158,11,0.08); color: var(--warning); }
+  .pill-safe    { background: rgba(5,150,105,0.08); color: var(--success); }
+  .pill-info    { background: rgba(14,165,233,0.08); color: var(--accent); }
+  .pill-warning { background: rgba(245,158,11,0.08); color: var(--warning); }
+  .pill-breach  { background: rgba(239,68,68,0.08); color: var(--danger); }
+  .num { font-variant-numeric: tabular-nums; font-family: 'Inter', 'Courier New', monospace; }
+  .metric-card { position: relative; overflow: hidden; transition: transform .18s ease, box-shadow .18s ease; }
+  .metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-dark)); }
+  .metric-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(16,24,40,0.06); }
+  .trade-row { border-bottom: 1px solid rgba(15,23,42,0.04); transition: background 0.12s; }
+  .trade-row:hover { background: rgba(14,165,233,0.03); }
+  .trade-row.win { border-left: 3px solid var(--success); }
+  .trade-row.loss { border-left: 3px solid var(--danger); }
+  .status-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status-live { background: var(--success); box-shadow: 0 0 8px rgba(5,150,105,0.18); }
+  /* Always use dark fintech theme (override prefers-color-scheme) */
+  body { background: var(--bg); color: var(--text); }
+  .card { background: var(--card); }
+
+</style>
+</head>
+<body class="min-h-screen">
+<!-- Header -->
+<header class="glass border-b border-slate-800 sticky top-0 z-50">
+  <div class="px-6 py-4 flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 gradient-accent rounded-lg flex items-center justify-center font-bold text-sm">T</div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tighter">TURBO EXECUTIONS</h1>
+          <p class="text-xs text-slate-400">Real-Time Prop Firm Trading Intelligence</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-4 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="status-badge status-live"></span>
+        <span id="connBadge" class="pill pill-info">Connecting</span>
+      </div>
+      <span id="modeBadge" class="pill pill-live">LIVE</span>
+      <span id="ts" class="text-slate-400 num hidden sm:inline"></span>
+    </div>
+  </div>
+</header>
+
+<!-- Login layer -->
+<div id="loginLayer" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;backdrop-filter:blur(6px);">
+  <div class="card p-8" style="width:420px;">
+    <h3 class="text-xl font-bold mb-2">Secure Access — TURBO EXECUTIONS</h3>
+    <p class="text-sm text-slate-400 mb-4">Enter the access code to view the private portfolio.</p>
+    <input id="accessCode" placeholder="Enter access code" class="w-full p-3 mb-3 rounded" style="background:transparent;border:1px solid var(--card-border);color:var(--text)">
+    <div class="flex items-center justify-between">
+      <button id="loginBtn" class="pill pill-info" style="padding:8px 14px;">Unlock</button>
+      <button id="demoBtn" class="pill pill-mock" style="padding:8px 14px;">Use Demo (No Auth)</button>
+    </div>
+    <p id="loginErr" class="text-sm text-rose-400 mt-3 hidden"></p>
+  </div>
+</div>
+
+<!-- Main Content -->
+<main class="p-6 max-w-full">
+  <!-- Top KPI Row -->
+  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="card metric-card p-6">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Balance</div>
+      <div id="balance" class="text-3xl font-bold num gradient-accent bg-clip-text text-transparent">—</div>
+      <div class="text-xs text-slate-500 mt-1">Account Value</div>
+    </div>
+    <div class="card metric-card p-6">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Equity</div>
+      <div id="equity" class="text-3xl font-bold num">—</div>
+      <div class="text-xs text-slate-500 mt-1">Current Equity</div>
+    </div>
+    <div class="card metric-card p-6">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Floating P&L</div>
+      <div id="floating" class="text-3xl font-bold num">—</div>
+      <div class="text-xs text-slate-500 mt-1">Open Positions</div>
+    </div>
+    <div class="card metric-card p-6">
+      <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Margin Level</div>
+      <div id="marginLevel" class="text-3xl font-bold num">—</div>
+      <div class="text-xs text-slate-500 mt-1">Margin Usage</div>
+    </div>
+  </section>
+
+  <!-- Charts Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Equity Curve -->
+    <div class="lg:col-span-2 card p-6">
+      <div class="flex items-baseline justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-bold">Equity Curve</h2>
+          <p class="text-xs text-slate-400 mt-1">Real-time balance progression</p>
+        </div>
+        <span id="curveMeta" class="text-xs text-slate-400 num"></span>
+      </div>
+      <canvas id="equityChart" height="80"></canvas>
+    </div>
+
+    <!-- Consistency Score -->
+    <div class="card p-6">
+      <h2 class="text-lg font-bold mb-4">Consistency Score</h2>
+      <div class="flex items-end gap-4 mb-6">
+        <div id="consScore" class="text-6xl font-black num gradient-accent bg-clip-text text-transparent">—</div>
+        <div id="consGrade" class="pill pill-safe mb-2">—</div>
+      </div>
+      <div class="text-xs text-slate-400 mb-3">Risk of Breach: <span id="breachProb" class="num text-slate-200 font-semibold">—</span></div>
+      <div class="space-y-2 text-xs" id="consBreak"></div>
+    </div>
+  </div>
+
+  <!-- Signals Row -->
+  <div class="card p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-bold">Signals</h2>
+        <p class="text-xs text-slate-400 mt-1">Real-time signals generated from market data (display-only)</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="text-xs text-slate-400">Sort:</label>
+        <select id="signalSort" class="text-sm p-2 bg-transparent border rounded" style="border-color:var(--card-border)">
+          <option value="confidence_desc">Confidence ↓</option>
+          <option value="confidence_asc">Confidence ↑</option>
+          <option value="rsi_desc">RSI ↓</option>
+          <option value="rsi_asc">RSI ↑</option>
+        </select>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+          <tr>
+            <th class="text-left py-3 px-2">Symbol</th>
+            <th class="text-left py-3 px-2">Direction</th>
+            <th class="text-right py-3 px-2">Entry</th>
+            <th class="text-right py-3 px-2">Stop</th>
+            <th class="text-right py-3 px-2">Target</th>
+            <th class="text-right py-3 px-2">Confidence</th>
+            <th class="text-right py-3 px-2">RSI</th>
+            <th class="text-right py-3 px-2">ATR</th>
+          </tr>
+        </thead>
+        <tbody id="signalsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Risk & Performance Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Drawdown Status -->
+    <div class="card p-6">
+      <h2 class="text-lg font-bold mb-6">Drawdown Status</h2>
+      <div class="space-y-5">
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-sm text-slate-300">Daily Loss</span>
+            <span id="ddDayPct" class="text-sm font-semibold num">—</span>
+          </div>
+          <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="ddDayBar" class="h-full transition-all" style="width:0%; background: var(--color-success);"></div>
+          </div>
+          <div class="text-xs text-slate-500 mt-1 num" id="ddDayAbs"></div>
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-sm text-slate-300">Total Loss</span>
+            <span id="ddTotPct" class="text-sm font-semibold num">—</span>
+          </div>
+          <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="ddTotBar" class="h-full transition-all" style="width:0%; background: var(--color-success);"></div>
+          </div>
+          <div class="text-xs text-slate-500 mt-1 num" id="ddTotAbs"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance Stats -->
+    <div class="card p-6">
+      <h2 class="text-lg font-bold mb-6">Performance</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div><div class="text-xs text-slate-400">Total Trades</div><div id="perfTrades" class="text-2xl font-bold num">—</div></div>
+        <div><div class="text-xs text-slate-400">Win Rate</div><div id="perfWin" class="text-2xl font-bold num">—</div></div>
+        <div><div class="text-xs text-slate-400">Profit Factor</div><div id="perfPF" class="text-2xl font-bold num">—</div></div>
+        <div><div class="text-xs text-slate-400">Expectancy</div><div id="perfExp" class="text-2xl font-bold num">—</div></div>
+        <div><div class="text-xs text-slate-400">Avg Risk:Reward</div><div id="perfRR" class="text-2xl font-bold num">—</div></div>
+        <div><div class="text-xs text-slate-400">Net P&L</div><div id="perfNet" class="text-2xl font-bold num">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compliance Rules -->
+  <div class="card p-6 mb-6">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-lg font-bold">Compliance Status</h2>
+        <p class="text-xs text-slate-400 mt-1">Prop firm trading rules</p>
+      </div>
+      <span id="overallPill" class="pill pill-safe">—</span>
+    </div>
+    <div id="rulesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"></div>
+  </div>
+
+  <!-- Active Trades Table -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <!-- Open Positions -->
+    <div class="lg:col-span-2 card p-6">
+      <h2 class="text-lg font-bold mb-4">Active Trades</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+            <tr>
+              <th class="text-left py-3 px-2">Time Opened</th>
+              <th class="text-left py-3 px-2">Symbol</th>
+              <th class="text-center py-3 px-2">Side</th>
+              <th class="text-right py-3 px-2">Size</th>
+              <th class="text-right py-3 px-2">Entry Price</th>
+              <th class="text-right py-3 px-2">Current</th>
+              <th class="text-right py-3 px-2">P&L</th>
+            </tr>
+          </thead>
+          <tbody id="posBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Symbol Exposure -->
+    <div class="card p-6">
+      <h2 class="text-lg font-bold mb-4">Exposure</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+            <tr>
+              <th class="text-left py-3 px-2">Symbol</th>
+              <th class="text-right py-3 px-2">Total</th>
+              <th class="text-right py-3 px-2">Net</th>
+              <th class="text-right py-3 px-2">Float</th>
+            </tr>
+          </thead>
+          <tbody id="exposureBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Trade History -->
+  <div class="card p-6">
+    <h2 class="text-lg font-bold mb-4">Trade History (Last 20)</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+          <tr>
+            <th class="text-left py-3 px-2">Closed Time</th>
+            <th class="text-left py-3 px-2">Symbol</th>
+            <th class="text-center py-3 px-2">Side</th>
+            <th class="text-right py-3 px-2">Size</th>
+            <th class="text-right py-3 px-2">Entry</th>
+            <th class="text-right py-3 px-2">Exit</th>
+            <th class="text-right py-3 px-2">Commission</th>
+            <th class="text-right py-3 px-2">P&L</th>
+            <th class="text-right py-3 px-2">Total Return</th>
+          </tr>
+        </thead>
+        <tbody id="dealsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const fmt = (n, d=2) => (n ?? 0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
+const sign = n => n > 0 ? "text-emerald-400" : n < 0 ? "text-rose-400" : "text-slate-300";
+const formatTime = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+let chart;
+function initChart() {
+  const ctx = document.getElementById('equityChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 150);
+  grad.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+  grad.addColorStop(1, 'rgba(0, 212, 255, 0)');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#00d4ff', backgroundColor: grad, fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2.5 }] },
+    options: {
+      animation: false, responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(255,255,255,0.95)', borderColor: 'rgba(14,165,233,0.6)', borderWidth: 1, titleColor: '#0f172a', bodyColor: '#0f172a' } },
+      scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 6, font: { size: 11 } }, grid: { color: 'rgba(148,163,184,.08)', drawBorder: false } },
+        y: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: 'rgba(148,163,184,.08)', drawBorder: false } }
+      }
+    }
+  });
+}
+
+function setPill(el, status) {
+  const pillClass = status === 'safe' ? 'pill-safe' : status === 'live' ? 'pill-live' : status === 'info' ? 'pill-info' : status === 'warning' ? 'pill-warning' : 'pill-breach';
+  el.className = 'pill ' + pillClass;
+  el.textContent = status.toUpperCase();
+}
+
+function paintBar(barEl, pctEl, pct, absText, absEl) {
+  const v = Math.min(pct, 100);
+  barEl.style.width = v + '%';
+  let color = 'var(--color-success)';
+  if (pct >= 100) color = 'var(--color-danger)';
+  else if (pct >= 70) color = 'var(--color-warning)';
+  barEl.style.background = color;
+  pctEl.textContent = fmt(pct, 1) + '%';
+  absEl.textContent = absText;
+}
+
+function render(s) { window._lastSnapshot = s;
+  document.getElementById('ts').textContent = formatTime(s.ts);
+  
+  const modeEl = document.getElementById('modeBadge');
+  if (s.settings.mock_mode) {
+    modeEl.className = 'pill pill-mock';
+    modeEl.textContent = 'MOCK MODE';
+  } else {
+    modeEl.className = 'pill pill-live';
+    modeEl.textContent = 'LIVE';
+  }
+
+  const a = s.account;
+  document.getElementById('balance').textContent = '$' + fmt(a.balance);
+  document.getElementById('equity').textContent = '$' + fmt(a.equity);
+  const f = document.getElementById('floating');
+  f.textContent = (a.profit >= 0 ? '+' : '') + '$' + fmt(a.profit);
+  f.className = 'text-3xl font-bold num ' + sign(a.profit);
+  document.getElementById('marginLevel').textContent = a.margin_level ? fmt(a.margin_level, 0) + '%' : '∞';
+
+  // Chart
+  const curve = s.equity_curve || [];
+  chart.data.labels = curve.map(p => {
+    const time = new Date(p.t);
+    return time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  });
+  chart.data.datasets[0].data = curve.map(p => p.equity);
+  chart.update('none');
+  document.getElementById('curveMeta').textContent = 'Slope: ' + (s.equity_slope || 0).toFixed(4);
+
+  // Consistency
+  const c = s.consistency || {};
+  const cs = document.getElementById('consScore');
+  cs.textContent = (c.score || '—').toString();
+  
+  const gradeColors = { green: 'gradient-accent', yellow: 'text-amber-400', red: 'text-rose-400' };
+  if (c.grade === 'green') cs.className = 'text-6xl font-black num gradient-accent bg-clip-text text-transparent';
+  else if (c.grade === 'yellow') cs.className = 'text-6xl font-black num text-amber-400';
+  else cs.className = 'text-6xl font-black num text-rose-400';
+  
+  setPill(document.getElementById('consGrade'), c.grade || 'info');
+  document.getElementById('breachProb').textContent = ((c.breach_probability || 0) * 100).toFixed(1) + '%';
+  document.getElementById('consBreak').innerHTML = Object.entries(c.breakdown || {}).map(([k, v]) =>
+    `<div class="flex justify-between items-center"><span class="text-slate-400">${k.replace(/_/g, ' ')}</span><span class="num text-slate-200">−${v.toFixed(2)}</span></div>`
+  ).join('');
+
+  // Drawdown
+  const dd = s.drawdowns || {}, set = s.settings;
+  const dailyUsed = dd.daily_loss_abs / (set.initial_balance * set.daily_dd_limit_pct / 100) * 100;
+  const totalUsed = dd.total_loss_abs / (set.initial_balance * set.total_dd_limit_pct / 100) * 100;
+  paintBar(document.getElementById('ddDayBar'), document.getElementById('ddDayPct'),
+           dailyUsed, '$' + fmt(dd.daily_loss_abs), document.getElementById('ddDayAbs'));
+  paintBar(document.getElementById('ddTotBar'), document.getElementById('ddTotPct'),
+           totalUsed, '$' + fmt(dd.total_loss_abs), document.getElementById('ddTotAbs'));
+
+  // Performance
+  const p = s.performance || {};
+  document.getElementById('perfTrades').textContent = (p.trades || 0).toString();
+  document.getElementById('perfWin').textContent = fmt(p.win_rate || 0, 1) + '%';
+  document.getElementById('perfPF').textContent = (p.profit_factor || 0).toFixed(2);
+  document.getElementById('perfExp').textContent = '$' + fmt(p.expectancy || 0);
+  document.getElementById('perfRR').textContent = (p.avg_rr || 0).toFixed(2);
+  const pn = document.getElementById('perfNet');
+  pn.textContent = (p.net_profit >= 0 ? '+' : '') + '$' + fmt(p.net_profit || 0);
+  pn.className = 'text-2xl font-bold num ' + sign(p.net_profit);
+
+  // Rules
+  setPill(document.getElementById('overallPill'), s.rules.overall || 'info');
+  document.getElementById('rulesGrid').innerHTML = (s.rules.rules || []).map(r => `
+    <div class="card p-4 border-l-4" style="border-left-color: ${r.status === 'safe' ? '#10b981' : r.status === 'warning' ? '#f59e0b' : '#ef4444'}">
+      <div class="flex items-start justify-between mb-2">
+        <span class="text-sm font-semibold">${r.name}</span>
+        <span class="pill pill-${r.status}">${r.status}</span>
+      </div>
+      <div class="text-xs text-slate-400 mb-2">${r.detail}</div>
+      ${r.used_pct != null ? `<div class="h-1.5 bg-slate-800 rounded-full overflow-hidden"><div class="h-full transition-all" style="width:${Math.min(r.used_pct,100)}%; background: ${r.status==='breach'?'#ef4444':r.status==='warning'?'#f59e0b':'#10b981'}"></div></div>` : ''}
+    </div>
+  `).join('');
+
+  // Positions (Open Trades) -- now includes signal badge when a live signal exists for the symbol
+  const signalsMap = {};
+  (s.signals || []).forEach(sig => { signalsMap[sig.symbol] = sig; });
+  document.getElementById('posBody').innerHTML = (s.positions || []).map(p => {
+    const sig = signalsMap[p.symbol];
+    const sigHtml = sig ? `<div class="text-xs inline-block ml-2 px-2 py-1 rounded-md font-semibold" style="background:${sig.direction==='BUY'?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.08)'}; color:${sig.direction==='BUY'?'#10b981':'#ef4444'}">${sig.direction} · ${Math.round(sig.confidence*100)}%</div>` : '';
+    return `
+    <tr class="trade-row ${p.profit > 0 ? 'win' : p.profit < 0 ? 'loss' : ''}">
+      <td class="py-3 px-2 text-xs text-slate-400 num">${formatTime(p.time)}</td>
+      <td class="py-3 px-2 font-semibold">${p.symbol} ${sigHtml}</td>
+      <td class="py-3 px-2 text-center"><span class="${p.type==='buy'?'text-emerald-400':'text-rose-400'} font-semibold">${p.type.toUpperCase()}</span></td>
+      <td class="py-3 px-2 text-right num">${fmt(p.volume, 2)}</td>
+      <td class="py-3 px-2 text-right num">${fmt(p.price_open, 5)}</td>
+      <td class="py-3 px-2 text-right num">${fmt(p.price_current, 5)}</td>
+      <td class="py-3 px-2 text-right num font-semibold ${sign(p.profit)}">${(p.profit >= 0 ? '+' : '')}${fmt(p.profit)}</td>
+    </tr>
+  `}).join('') || '<tr><td colspan="7" class="py-6 text-center text-slate-500">No open positions</td></tr>';
+
+  // Exposure
+  document.getElementById('exposureBody').innerHTML = (s.exposure || []).map(e => `
+    <tr class="trade-row">
+      <td class="py-3 px-2 font-semibold">${e.symbol}</td>
+      <td class="py-3 px-2 text-right num">${fmt(e.volume, 2)}</td>
+      <td class="py-3 px-2 text-right num ${sign(e.net_lots)}">${(e.net_lots >= 0 ? '+' : '')}${fmt(e.net_lots, 2)}</td>
+      <td class="py-3 px-2 text-right num ${sign(e.floating)}">${fmt(e.floating, 2)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" class="py-3 text-center text-slate-500">No exposure</td></tr>';
+
+  // Trade History (stable entry/exit pairing)
+  const allDeals = s.deals || [];
+  const entryMap = {};
+  allDeals.forEach(d => { if (d.entry === 'in') { entryMap[d.order] = d.price; } });
+  const closedDeals = allDeals.filter(d => d.entry === 'out').slice(-20).reverse();
+  document.getElementById('dealsBody').innerHTML = closedDeals.map(d => {
+    const entryPrice = entryMap[d.order] ?? d.price;
+    const pnlPct = entryPrice ? (d.profit / (Math.abs(entryPrice) * d.volume * 100) * 100) : 0;
+    return `
+      <tr class="trade-row ${d.profit > 0 ? 'win' : d.profit < 0 ? 'loss' : ''}">
+        <td class="py-3 px-2 text-xs text-slate-400 num">${formatTime(d.time)}</td>
+        <td class="py-3 px-2 font-semibold">${d.symbol}</td>
+        <td class="py-3 px-2 text-center"><span class="${d.type==='buy'?'text-emerald-500':'text-rose-500'} font-semibold">${d.type.toUpperCase()}</span></td>
+        <td class="py-3 px-2 text-right num">${fmt(d.volume, 2)}</td>
+        <td class="py-3 px-2 text-right num">${fmt(entryPrice, 5)}</td>
+        <td class="py-3 px-2 text-right num">${fmt(d.price, 5)}</td>
+        <td class="py-3 px-2 text-right num">${fmt(d.commission)}</td>
+        <td class="py-3 px-2 text-right num font-semibold ${sign(d.profit)}">${(d.profit >= 0 ? '+' : '') + fmt(d.profit)}</td>
+        <td class="py-3 px-2 text-right num font-semibold ${sign(pnlPct)}">${(pnlPct >= 0 ? '+' : '') + fmt(pnlPct, 2)}%</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="9" class="py-6 text-center text-slate-500">No trade history</td></tr>';
+}
+
+// Render signals table and wire sorting
+function renderSignals(signals) {
+  const tbody = document.getElementById('signalsBody');
+  if (!signals || !signals.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-slate-500">No signals</td></tr>';
+    return;
+  }
+  const sort = document.getElementById('signalSort')?.value || 'confidence_desc';
+  const list = signals.slice();
+  if (sort === 'confidence_desc') list.sort((a,b)=>b.confidence - a.confidence);
+  else if (sort === 'confidence_asc') list.sort((a,b)=>a.confidence - b.confidence);
+  else if (sort === 'rsi_desc') list.sort((a,b)=>b.rsi - a.rsi);
+  else if (sort === 'rsi_asc') list.sort((a,b)=>a.rsi - b.rsi);
+
+  tbody.innerHTML = list.map(s => `
+    <tr class="trade-row">
+      <td class="py-3 px-2 font-semibold">${s.symbol}</td>
+      <td class="py-3 px-2">${s.direction === 'BUY' ? '<span class="text-emerald-400 font-semibold">BUY</span>' : '<span class="text-rose-400 font-semibold">SELL</span>'}</td>
+      <td class="py-3 px-2 text-right num">${fmt(s.entry, 5)}</td>
+      <td class="py-3 px-2 text-right num">${fmt(s.stop, 5)}</td>
+      <td class="py-3 px-2 text-right num">${fmt(s.target, 5)}</td>
+      <td class="py-3 px-2 text-right num font-semibold">${Math.round(s.confidence*100)}%</td>
+      <td class="py-3 px-2 text-right num">${s.rsi}</td>
+      <td class="py-3 px-2 text-right num">${s.atr}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('signalSort')?.addEventListener('change', () => {
+  // re-render using last snapshot if available
+  if (window._lastSnapshot) renderSignals(window._lastSnapshot.signals || []);
+});
+
+function connect() {
+  const conn = document.getElementById('connBadge');
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const token = localStorage.getItem('access_token');
+  const wsUrl = token ? `${proto}://${location.host}/ws?token=${token}` : `${proto}://${location.host}/ws`;
+  const ws = new WebSocket(wsUrl);
+  ws.onopen = () => setPill(conn, 'safe');
+  ws.onclose = () => { setPill(conn, 'warning'); setTimeout(connect, 2000); };
+  ws.onerror = () => setPill(conn, 'breach');
+  ws.onmessage = (e) => { try { const data = JSON.parse(e.data); render(data); renderSignals(data.signals || []); } catch(err){ console.error(err); } };
+}
+
+initChart();
+
+// Authentication flow
+async function doLogin(code) {
+  const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
+  if (res.ok) {
+    const j = await res.json();
+    localStorage.setItem('access_token', j.token);
+    document.getElementById('loginLayer').style.display = 'none';
+    startRealtime();
+  } else {
+    const err = await res.json().catch(()=>({detail:'Login failed'}));
+    const el = document.getElementById('loginErr'); el.textContent = err.detail || 'Invalid code'; el.classList.remove('hidden');
+  }
+}
+
+function startRealtime(){
+  const token = localStorage.getItem('access_token');
+  const qs = token ? `?token=${token}` : '';
+  fetch('/api/snapshot'+qs).then(r=>{ if (r.status===401){ document.getElementById('loginLayer').style.display='flex'; } return r.json() }).then(d => { if (d && d.ts) render(d); renderSignals(d.signals || []); });
+  connect();
+}
+
+// demo button allows skipping auth for local testing
+document.getElementById('loginBtn').addEventListener('click', ()=> doLogin(document.getElementById('accessCode').value.trim()));
+document.getElementById('demoBtn').addEventListener('click', ()=>{ localStorage.removeItem('access_token'); document.getElementById('loginLayer').style.display='none'; startRealtime(); });
+
+// if token present, auto start
+if (localStorage.getItem('access_token')){
+  document.getElementById('loginLayer').style.display='none'; startRealtime();
+}
+</script>
+</body>
+</html>
