@@ -302,6 +302,26 @@
 </main>
 
 <script>
+// API Configuration - supports both local and remote backends
+const API_BASE_URL = (() => {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8000';  // Local development
+  }
+  // Production backend on Render
+  return 'https://turbo-executions-web.onrender.com';
+})();
+
+const API_ENDPOINTS = {
+  login: `${API_BASE_URL}/api/login`,
+  snapshot: `${API_BASE_URL}/api/snapshot`,
+  ws: () => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${proto}://${new URL(API_BASE_URL || window.location.href).host}/ws`;
+  },
+  health: `${API_BASE_URL}/api/health`
+};
+
 const fmt = (n, d=2) => (n ?? 0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
 const sign = n => n > 0 ? "text-emerald-400" : n < 0 ? "text-rose-400" : "text-slate-300";
 const formatTime = (iso) => {
@@ -512,9 +532,8 @@ document.getElementById('signalSort')?.addEventListener('change', () => {
 
 function connect() {
   const conn = document.getElementById('connBadge');
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const token = localStorage.getItem('access_token');
-  const wsUrl = token ? `${proto}://${location.host}/ws?token=${token}` : `${proto}://${location.host}/ws`;
+  const wsUrl = token ? `${API_ENDPOINTS.ws()}?token=${token}` : API_ENDPOINTS.ws();
   const ws = new WebSocket(wsUrl);
   ws.onopen = () => setPill(conn, 'safe');
   ws.onclose = () => { setPill(conn, 'warning'); setTimeout(connect, 2000); };
@@ -526,7 +545,12 @@ initChart();
 
 // Authentication flow
 async function doLogin(code) {
-  const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
+  const res = await fetch(API_ENDPOINTS.login, { 
+    method: 'POST', 
+    headers: {'Content-Type':'application/json'}, 
+    body: JSON.stringify({ code }),
+    credentials: 'include'
+  });
   if (res.ok) {
     const j = await res.json();
     localStorage.setItem('access_token', j.token);
@@ -541,7 +565,9 @@ async function doLogin(code) {
 function startRealtime(){
   const token = localStorage.getItem('access_token');
   const qs = token ? `?token=${token}` : '';
-  fetch('/api/snapshot'+qs).then(r=>{ if (r.status===401){ document.getElementById('loginLayer').style.display='flex'; } return r.json() }).then(d => { if (d && d.ts) render(d); renderSignals(d.signals || []); });
+  fetch(API_ENDPOINTS.snapshot + qs, { credentials: 'include' })
+    .then(r=>{ if (r.status===401){ document.getElementById('loginLayer').style.display='flex'; } return r.json() }) 
+    .then(d => { if (d && d.ts) render(d); renderSignals(d.signals || []); });
   connect();
 }
 

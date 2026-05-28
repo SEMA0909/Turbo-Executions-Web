@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uuid
 
@@ -55,6 +56,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MT5 Execution Intelligence", lifespan=lifespan)
+
+# Add CORS middleware to allow requests from Netlify frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins; can restrict to specific URLs like "https://turbo-executions.netlify.app"
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 static_dir = os.path.join(os.path.dirname(__file__), "..", "web", "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
