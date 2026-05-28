@@ -10,9 +10,15 @@ services:
         value: 3.11
       - key: ACCESS_CODE
         sync: false  # Set this in Render dashboard
+      - key: MT5_LOGIN
+        value: 405773
+      - key: MT5_PASSWORD
+        value: N8odc?1bVD
+      - key: MT5_SERVER
+        value: EquityEdge-Trade
       - key: HOST
         value: 0.0.0.0
       - key: PORT
         value: 8000
       - key: MOCK_MODE
-        value: "1"  # Use mock mode since MT5 won't be available
+        value: "0"  # Enable live trading mode
