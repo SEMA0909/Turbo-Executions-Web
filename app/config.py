@@ -56,5 +56,11 @@ class Settings:
     # Access code for dashboard (simple shared secret). Set ACCESS_CODE in .env
     access_code: str = os.getenv("ACCESS_CODE", "")
 
+    # Signal gating / backtesting
+    signal_ttl_seconds: int = _int("SIGNAL_TTL_SECONDS", 900)  # freeze signals for 15 minutes by default
+    backtest_min_winrate: float = _float("BACKTEST_MIN_WINRATE", 0.35)
+    backtest_min_pf: float = _float("BACKTEST_MIN_PF", 1.2)
+    backtest_lookback_bars: int = _int("BACKTEST_LOOKBACK_BARS", 500)
+
 
 settings = Settings()
