@@ -1,0 +1,8 @@
+﻿[build]
+  publish = "app/web/static"
+  command = ""
+
+[context.production.environment]
+  # Set these in Netlify site settings instead of committing secrets
+  SUPABASE_URL = "https://your-project.supabase.co"
+  SUPABASE_ANON_KEY = "your_anon_key_here"
