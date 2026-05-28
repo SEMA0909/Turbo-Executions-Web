@@ -13,7 +13,13 @@ from app.storage import db
 from app.alerts.dispatcher import evaluate as evaluate_alerts
 from app.signals.paste_engine import SignalEngine
 
-from supabase_integration.backend.write_hooks import publish_signal_if_valid, publish_snapshot
+try:
+    from supabase_integration.backend.write_hooks import publish_signal_if_valid, publish_snapshot
+except ImportError:
+    # Supabase integration not available in deployment
+    publish_signal_if_valid = None
+    publish_snapshot = None
+
 from app.signals import backtester
 # Example usage (do not execute at import time):
 # def validator(signal):
@@ -133,8 +139,8 @@ class Engine:
                 sig['backtest'] = gate
                 if not gate.get('ok'):
                     continue
-                # publish via write_hooks
-                ok = publish_signal_if_valid(sig, lambda s: True)
+                # publish via write_hooks if available
+                ok = publish_signal_if_valid(sig, lambda s: True) if publish_signal_if_valid else False
                 if ok:
                     # freeze this signal locally so UI/snapshots use the frozen values
                     frozen = dict(sig)
