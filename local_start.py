@@ -16,19 +16,21 @@ from dotenv import load_dotenv
 # Fix Windows emoji encoding before any logging
 if sys.platform == "win32":
     import io
-    import codecs
-    # Set UTF-8 encoding for stdout/stderr
-    sys.stdout.reconfigure(encoding='utf-8')
-    sys.stderr.reconfigure(encoding='utf-8')
+    # Set UTF-8 encoding for stdout/stderr before logger
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# Create handlers with proper encoding
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+
+file_handler = logging.FileHandler('data/local_sync.log', encoding='utf-8')
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('data/local_sync.log')
-    ]
+    handlers=[stdout_handler, file_handler]
 )
 
 logger = logging.getLogger(__name__)

@@ -173,7 +173,7 @@ class MT5Bridge:
                     'price_open': float(pos.price_open),
                     'price_current': float(pos.price_current),
                     'profit': float(pos.profit),
-                    'commission': float(pos.commission),
+                    'commission': float(pos.commission) if hasattr(pos, 'commission') else 0.0,
                     'time_open': datetime.fromtimestamp(pos.time).isoformat(),
                     'swap': float(pos.swap) if hasattr(pos, 'swap') else 0,
                 })
