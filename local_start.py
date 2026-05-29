@@ -13,6 +13,14 @@ import signal
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Fix Windows emoji encoding before any logging
+if sys.platform == "win32":
+    import io
+    import codecs
+    # Set UTF-8 encoding for stdout/stderr
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
