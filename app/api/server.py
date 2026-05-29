@@ -15,6 +15,8 @@ import uuid
 
 from app.core.engine import Engine
 from app.config import settings
+from app.core.sync_service import SyncServiceManager
+from app.api import sync_routes
 
 log = logging.getLogger("api")
 
@@ -45,6 +47,39 @@ async def broadcast(snapshot: dict) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine
+    
+    # Initialize MT5 real-time sync if enabled
+    if os.getenv('MOCK_MODE', '1') == '0':
+        log.info("🔄 Initializing real-time MT5 sync service...")
+        try:
+            mt5_login = os.getenv('MT5_LOGIN')
+            mt5_password = os.getenv('MT5_PASSWORD')
+            mt5_server = os.getenv('MT5_SERVER')
+            mt5_path = os.getenv('MT5_PATH')
+            poll_interval = int(os.getenv('POLL_INTERVAL_SECONDS', '5'))
+            
+            if mt5_login and mt5_password and mt5_server:
+                sync_service = SyncServiceManager.initialize(
+                    mt5_login=int(mt5_login),
+                    mt5_password=mt5_password,
+                    mt5_server=mt5_server,
+                    mt5_path=mt5_path,
+                    poll_interval=poll_interval,
+                )
+                
+                # Connect and start syncing
+                if sync_service.connect():
+                    sync_service.start()
+                    log.info("✅ Real-time sync service started successfully")
+                else:
+                    log.warning("⚠️ Failed to connect to MT5 - running in cached mode")
+            else:
+                log.warning("⚠️ MT5 credentials not configured")
+        except Exception as e:
+            log.error(f"Error initializing sync service: {e}")
+    else:
+        log.info("📋 Running in MOCK_MODE - real-time sync disabled")
+    
     engine = Engine(broadcaster=broadcast)
     await engine.start()
     log.info("Engine started")
@@ -52,6 +87,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await engine.stop()
+        # Stop sync service on shutdown
+        SyncServiceManager.stop()
         log.info("Engine stopped")
 
 
@@ -108,7 +145,23 @@ async def snapshot(request: Request) -> JSONResponse:
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"ok": True, "connected": engine.client.connected if engine else False}
+    from app.core.sync_service import SyncServiceManager
+    sync_service = SyncServiceManager.get_instance()
+    sync_status = sync_service.get_status() if sync_service else {}
+    
+    return {
+        "ok": True,
+        "connected": engine.client.connected if engine else False,
+        "sync_service": {
+            "running": sync_status.get('running', False),
+            "connected": sync_status.get('connected', False),
+            "last_sync": sync_status.get('last_sync'),
+        }
+    }
+
+
+# Include real-time sync routes
+app.include_router(sync_routes.router)
 
 
 @app.websocket("/ws")

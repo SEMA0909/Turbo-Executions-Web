@@ -1,0 +1,19 @@
+```yaml
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes to prevent Render free tier spindown
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render backend to keep it alive
+        run: |
+          echo "Pinging backend at $(date)"
+          curl -s -X GET https://turbo-executions-api.onrender.com/api/health || echo "Backend unreachable"
+          echo "Keep-alive ping completed"
+```
